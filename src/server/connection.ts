@@ -143,7 +143,9 @@ export class McpConnection {
             },
           },
         },
-        versionNegotiation: { mode: "auto", probe: { timeoutMs: 1800 } },
+        versionNegotiation: config.transport === "stdio"
+          ? { mode: "legacy" }
+          : { mode: "auto", probe: { timeoutMs: 1800 } },
       },
     );
 

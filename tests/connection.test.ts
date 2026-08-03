@@ -24,6 +24,8 @@ describe("McpConnection", () => {
 
       const resource = await connection.readResource("ui://debug-demo/echo.html");
       expect(resource.contents[0]).toMatchObject({ mimeType: "text/html;profile=mcp-app" });
+      expect(connection.logs().some((entry) => entry.label === "server/discover")).toBe(false);
+      expect(connection.logs().some((entry) => entry.label === "initialize")).toBe(true);
       expect(connection.logs().some((entry) => entry.label === "tools/call")).toBe(true);
     } finally {
       await connection.disconnect();

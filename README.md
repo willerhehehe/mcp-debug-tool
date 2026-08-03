@@ -75,6 +75,19 @@ npm run build
 npm pack --dry-run
 ```
 
+## Release
+
+Releases are published to npm by GitHub Actions when a version tag is pushed. The tag must exactly match the version in `package.json` and use the `v<version>` format.
+
+For the next patch release:
+
+```bash
+npm version patch
+git push origin main --follow-tags
+```
+
+The `Publish to npm` workflow runs the full check and build, then publishes through npm Trusted Publishing with short-lived OIDC credentials. No `NPM_TOKEN` repository secret is required.
+
 ## Security notes
 
 - The server binds to `127.0.0.1` by default.

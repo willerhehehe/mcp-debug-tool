@@ -1,0 +1,55 @@
+{
+  "name": "mcp-debug-tool",
+  "version": "0.1.1",
+  "description": "A local UI workbench for inspecting MCP servers and MCP Apps.",
+  "type": "module",
+  "bin": {
+    "mcp-debug-tool": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"tsx watch src/server/index.ts --dev --no-open\"",
+    "build": "vite build && tsup",
+    "start": "node dist/cli.js --no-open",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-apps",
+    "debugger",
+    "inspector"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/ext-apps": "^1.7.5",
+    "@phosphor-icons/react": "^2.1.10",
+    "express": "^5.1.0",
+    "open": "^11.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.0",
+    "tsx": "^4.20.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.2.0",
+    "vitest": "^4.0.0"
+  }
+}

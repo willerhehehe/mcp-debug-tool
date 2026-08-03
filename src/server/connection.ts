@@ -1,6 +1,7 @@
 import {
   Client,
   StreamableHTTPClientTransport,
+  UnauthorizedError,
   type JSONRPCMessage,
   type Transport,
   type TransportSendOptions,
@@ -15,6 +16,16 @@ import type {
   ConnectionStatus,
   LogEntry,
 } from "../shared/types.js";
+import { InMemoryOAuthProvider } from "./oauth-provider.js";
+
+type HttpConnectConfig = Extract<ConnectConfig, { transport: "http" }>;
+
+interface PendingOAuth {
+  config: HttpConnectConfig;
+  provider: InMemoryOAuthProvider;
+  transport: StreamableHTTPClientTransport;
+  target: string;
+}
 
 type MessageHandler = Transport["onmessage"];
 
@@ -90,6 +101,12 @@ export class McpConnection {
   private logsValue: LogEntry[] = [];
   private nextLogId = 1;
   private catalogValue: Catalog = emptyCatalog();
+  private pendingOAuth?: PendingOAuth;
+
+  constructor(
+    private readonly oauthCallbackUrl = "http://127.0.0.1:3333/oauth/callback",
+    private readonly fetchImpl?: typeof fetch,
+  ) {}
 
   get status() {
     return this.statusValue;
@@ -112,7 +129,7 @@ export class McpConnection {
     if (this.logsValue.length > 500) this.logsValue.splice(0, this.logsValue.length - 500);
   }
 
-  async connect(config: ConnectConfig) {
+  async connect(config: ConnectConfig, existingOAuthProvider?: InMemoryOAuthProvider) {
     await this.disconnect();
     this.catalogValue = emptyCatalog();
 
@@ -131,6 +148,9 @@ export class McpConnection {
     );
 
     let rawTransport: Transport;
+    let httpTransport: StreamableHTTPClientTransport | undefined;
+    let oauthProvider: InMemoryOAuthProvider | undefined;
+    let authorizationUrl: URL | undefined;
     let target: string;
     if (config.transport === "stdio") {
       if (!config.command.trim()) throw new Error("Command is required");
@@ -155,9 +175,33 @@ export class McpConnection {
       if (!/^https?:$/.test(url.protocol)) throw new Error("Only http:// and https:// URLs are supported");
       const headers = new Headers(cleanRecord(config.headers));
       if (config.bearerToken?.trim()) headers.set("authorization", `Bearer ${config.bearerToken.trim()}`);
-      rawTransport = new StreamableHTTPClientTransport(url, {
+      const hasManualAuthorization = headers.has("authorization");
+      oauthProvider = hasManualAuthorization
+        ? undefined
+        : existingOAuthProvider ?? new InMemoryOAuthProvider(this.oauthCallbackUrl, () => undefined);
+      oauthProvider?.setRedirectHandler((urlToOpen) => {
+          authorizationUrl = urlToOpen;
+          if (httpTransport && this.statusValue.connected) {
+            this.pendingOAuth = { config, provider: oauthProvider!, transport: httpTransport, target };
+            this.statusValue = {
+              connected: false,
+              transport: "http",
+              target,
+              auth: { state: "required", authorizationUrl: urlToOpen.toString() },
+            };
+            this.addLog({
+              direction: "system",
+              label: "oauth/authorization-required",
+              payload: { target, authorizationServer: urlToOpen.origin, reason: "credentials expired" },
+            });
+          }
+        });
+      httpTransport = new StreamableHTTPClientTransport(url, {
         requestInit: { headers },
+        authProvider: oauthProvider,
+        fetch: this.fetchImpl,
       });
+      rawTransport = httpTransport;
       target = url.toString();
     }
 
@@ -182,8 +226,67 @@ export class McpConnection {
       await this.refreshCatalog();
       return { status: this.statusValue, catalog: this.catalogValue };
     } catch (error) {
+      if (config.transport === "http" && httpTransport && oauthProvider && authorizationUrl && UnauthorizedError.isInstance(error)) {
+        try {
+          await client.close();
+        } catch {
+          // The failed handshake may already have closed the transport.
+        }
+        this.client = undefined;
+        this.transport = undefined;
+        this.pendingOAuth = { config, provider: oauthProvider, transport: httpTransport, target };
+        this.statusValue = {
+          connected: false,
+          transport: "http",
+          target,
+          auth: { state: "required", authorizationUrl: authorizationUrl.toString() },
+        };
+        this.addLog({
+          direction: "system",
+          label: "oauth/authorization-required",
+          payload: { target, authorizationServer: authorizationUrl.origin },
+        });
+        return { status: this.statusValue, catalog: this.catalogValue };
+      }
       this.addLog({ direction: "system", label: "connection/failed", payload: errorMessage(error) });
       await this.disconnect();
+      throw error;
+    }
+  }
+
+  async completeOAuth(params: URLSearchParams) {
+    const pending = this.pendingOAuth;
+    if (!pending) throw new Error("No OAuth authorization is pending");
+    if (!pending.provider.matchesState(params.get("state"))) {
+      this.addLog({ direction: "system", label: "oauth/callback-rejected", payload: "State validation failed" });
+      throw new Error("OAuth callback could not be verified");
+    }
+
+    this.statusValue = {
+      connected: false,
+      transport: "http",
+      target: pending.target,
+      auth: { state: "exchanging" },
+    };
+    this.addLog({ direction: "system", label: "oauth/callback", payload: { target: pending.target } });
+
+    try {
+      await pending.transport.finishAuth(params);
+      this.addLog({ direction: "system", label: "oauth/token-ready", payload: { target: pending.target } });
+      this.pendingOAuth = undefined;
+      return await this.connect(pending.config, pending.provider);
+    } catch (error) {
+      this.pendingOAuth = undefined;
+      this.statusValue = {
+        connected: false,
+        transport: "http",
+        target: pending.target,
+        auth: {
+          state: "error",
+          message: "OAuth authorization could not be completed. Start a new connection to retry.",
+        },
+      };
+      this.addLog({ direction: "system", label: "oauth/failed", payload: safeOAuthError(error) });
       throw error;
     }
   }
@@ -199,6 +302,14 @@ export class McpConnection {
     this.client = undefined;
     this.transport = undefined;
     this.stdioTransport = undefined;
+    if (this.pendingOAuth) {
+      try {
+        await this.pendingOAuth.transport.close();
+      } catch {
+        // Best-effort cleanup of an interrupted authorization flow.
+      }
+    }
+    this.pendingOAuth = undefined;
     this.statusValue = { connected: false };
   }
 
@@ -241,6 +352,12 @@ export class McpConnection {
   getPrompt(name: string, args?: Record<string, string>) {
     return this.requireClient().getPrompt({ name, arguments: args });
   }
+}
+
+function safeOAuthError(error: unknown) {
+  if (!error || typeof error !== "object") return "OAuth flow failed";
+  const name = "name" in error && typeof error.name === "string" ? error.name : "OAuthError";
+  return { name, message: "OAuth flow failed; sensitive callback details were not logged" };
 }
 
 function emptyCatalog(): Catalog {

@@ -19,7 +19,7 @@ Node.js 20 or newer is required.
 ## What it supports
 
 - stdio servers launched from a command, arguments, working directory, and environment
-- Streamable HTTP servers with custom headers or a bearer token
+- Streamable HTTP servers with OAuth 2.1, custom headers, or a bearer token
 - Tools, Resources, Resource Templates, and Prompts discovery
 - Schema-driven tool argument forms
 - Tool calls, resource reads, and prompt retrieval
@@ -53,6 +53,8 @@ Transport: HTTP
 Server URL: http://127.0.0.1:3000/mcp
 ```
 
+If the server requires OAuth, leave the bearer token empty. MCP Debug Tool discovers the protected-resource and authorization-server metadata, performs Dynamic Client Registration when available, and presents an **Authorize in browser** action. The callback uses Authorization Code + PKCE and reconnects automatically.
+
 ## Local development
 
 ```bash
@@ -78,14 +80,14 @@ npm pack --dry-run
 ## Security notes
 
 - The server binds to `127.0.0.1` by default.
-- Bearer tokens remain in process memory and are not written to disk.
+- OAuth client registrations, PKCE verifiers, refresh tokens, and bearer tokens remain in process memory and are not written to disk.
 - MCP App content runs in a sandboxed iframe without same-origin access.
 - External links requested by an MCP App require confirmation.
 - The tool intentionally starts local commands and connects to URLs you provide. Treat untrusted MCP servers like untrusted code.
 
 ## Current MVP boundaries
 
-- OAuth browser authorization is not implemented yet. Use a bearer token or custom header.
+- Authorization servers without Dynamic Client Registration or URL-based client metadata still require a manually supplied bearer token or custom authorization header.
 - Legacy HTTP plus SSE fallback is not implemented yet.
 - MCP App sampling and file download host capabilities are not advertised.
 - The MCP App preview uses a direct sandboxed iframe. A hardened double-iframe sandbox proxy is planned before calling the host implementation specification-complete.

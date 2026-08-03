@@ -1,4 +1,5 @@
 import {
+  ArrowSquareOut,
   ArrowsClockwise,
   BracketsCurly,
   CaretDown,
@@ -8,6 +9,7 @@ import {
   Database,
   Globe,
   ListMagnifyingGlass,
+  LockKeyOpen,
   Moon,
   Plugs,
   Power,
@@ -59,6 +61,33 @@ export default function App() {
       if (current.connected) setCatalog(await api.catalog());
     });
   }, []);
+
+  useEffect(() => {
+    if (!status.connected && (!status.auth || status.auth.state === "error")) return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const current = await api.status();
+        if (!active) return;
+        const becameConnected = !status.connected && current.connected;
+        setStatus(current);
+        if (becameConnected) {
+          setCatalog(await api.catalog());
+          setSelection(undefined);
+          setResult(undefined);
+          setAppHtml(undefined);
+          setError(undefined);
+        }
+      } catch {
+        // The local server may be restarting.
+      }
+    };
+    const timer = window.setInterval(poll, 800);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [status.connected, status.auth?.state, status.auth?.authorizationUrl]);
 
   useEffect(() => {
     let active = true;
@@ -181,7 +210,7 @@ export default function App() {
       </header>
 
       {!status.connected ? (
-        <ConnectScreen onConnect={connect} busy={busy} error={error} />
+        <ConnectScreen onConnect={connect} busy={busy} error={error} status={status} />
       ) : (
         <main className={`workbench ${logsOpen ? (expandedLogId !== undefined ? "with-log-detail" : "with-logs") : ""}`}>
           <aside className="sidebar">
@@ -259,7 +288,12 @@ export default function App() {
   );
 }
 
-function ConnectScreen({ onConnect, busy, error }: { onConnect: (config: ConnectConfig) => void; busy: boolean; error?: string }) {
+function ConnectScreen({ onConnect, busy, error, status }: {
+  onConnect: (config: ConnectConfig) => void;
+  busy: boolean;
+  error?: string;
+  status: ConnectionStatus;
+}) {
   const [transport, setTransport] = useState<"stdio" | "http">("stdio");
   const [command, setCommand] = useState("npx");
   const [args, setArgs] = useState('["-y", "@modelcontextprotocol/server-everything"]');
@@ -269,6 +303,12 @@ function ConnectScreen({ onConnect, busy, error }: { onConnect: (config: Connect
   const [token, setToken] = useState("");
   const [headers, setHeaders] = useState("{}");
   const [formError, setFormError] = useState<string>();
+
+  useEffect(() => {
+    if (status.transport !== "http" || !status.target) return;
+    setTransport("http");
+    setUrl(status.target);
+  }, [status.transport, status.target]);
 
   const submit = () => {
     setFormError(undefined);
@@ -283,6 +323,11 @@ function ConnectScreen({ onConnect, busy, error }: { onConnect: (config: Connect
     }
   };
 
+  const authorize = () => {
+    if (!status.auth?.authorizationUrl) return;
+    window.open(status.auth.authorizationUrl, "_blank", "noopener,noreferrer");
+  };
+
   return (
     <main className="connect-page">
       <section className="connect-copy">
@@ -290,7 +335,7 @@ function ConnectScreen({ onConnect, busy, error }: { onConnect: (config: Connect
         <h1>Inspect an MCP server in seconds.</h1>
         <p>Connect, discover capabilities, call tools, read resources, and render MCP Apps from one local workbench.</p>
         <div className="feature-line"><TerminalWindow size={17} /><span>stdio process capture</span></div>
-        <div className="feature-line"><Globe size={17} /><span>Streamable HTTP and bearer tokens</span></div>
+        <div className="feature-line"><Globe size={17} /><span>Streamable HTTP, OAuth, and bearer tokens</span></div>
         <div className="feature-line"><BracketsCurly size={17} /><span>Schema-driven requests and protocol logs</span></div>
       </section>
       <section className="connect-card">
@@ -308,12 +353,27 @@ function ConnectScreen({ onConnect, busy, error }: { onConnect: (config: Connect
         ) : (
           <div className="form-stack">
             <Field label="Server URL" helper="Streamable HTTP endpoint"><input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="http://127.0.0.1:3000/mcp" /></Field>
-            <Field label="Bearer token" helper="Optional. Stored only in this process memory."><input type="password" value={token} onChange={(event) => setToken(event.target.value)} /></Field>
+            <Field label="Bearer token" helper="Optional override. Leave empty for automatic OAuth discovery."><input type="password" value={token} onChange={(event) => setToken(event.target.value)} /></Field>
             <Field label="Headers" helper="Optional JSON object"><textarea rows={3} value={headers} onChange={(event) => setHeaders(event.target.value)} /></Field>
           </div>
         )}
+        {status.auth?.state === "required" && status.auth.authorizationUrl && (
+          <div className="oauth-box">
+            <div className="oauth-copy">
+              <LockKeyOpen size={17} />
+              <div><strong>Authorization required</strong><span>Sign in with the server's authorization provider. Tokens stay in this process.</span></div>
+            </div>
+            <button className="button primary oauth-button" onClick={authorize}><ArrowSquareOut size={15} />Authorize in browser</button>
+          </div>
+        )}
+        {status.auth?.state === "exchanging" && (
+          <div className="oauth-box waiting">
+            <div className="oauth-copy"><LockKeyOpen size={17} /><div><strong>Completing authorization</strong><span>Exchanging the authorization code and reconnecting to the MCP server.</span></div></div>
+          </div>
+        )}
+        {status.auth?.state === "error" && <div className="error-box"><strong>Authorization failed</strong><span>{status.auth.message}</span></div>}
         {(formError || error) && <div className="error-box"><strong>Connection failed</strong><span>{formError || error}</span></div>}
-        <button className="button primary connect-button" onClick={submit} disabled={busy}>{busy ? "Connecting..." : "Connect server"}</button>
+        <button className="button primary connect-button" onClick={submit} disabled={busy || status.auth?.state === "exchanging"}>{busy ? "Connecting..." : status.auth?.state === "required" ? "Restart connection" : "Connect server"}</button>
         <p className="local-note">Runs locally on 127.0.0.1. Credentials stay in the current process.</p>
       </section>
     </main>

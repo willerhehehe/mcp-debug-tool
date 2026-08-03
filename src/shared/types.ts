@@ -39,4 +39,9 @@ export interface ConnectionStatus {
   pid?: number | null;
   connectedAt?: string;
   target?: string;
+  auth?: {
+    state: "required" | "exchanging" | "error";
+    authorizationUrl?: string;
+    message?: string;
+  };
 }

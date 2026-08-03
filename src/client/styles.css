@@ -97,6 +97,14 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .connect-button { width: 100%; height: 40px; margin-top: 20px; font-size: 13px; }
 .local-note { margin: 10px 0 0; color: var(--faint); text-align: center; font-size: 10px; }
 .error-box { display: grid; gap: 4px; margin-top: 14px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--line)); border-radius: 7px; color: var(--danger); background: var(--danger-soft); font-size: 11px; line-height: 1.45; }
+.oauth-box { display: grid; gap: 11px; margin-top: 14px; padding: 12px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 8px; background: var(--accent-soft); }
+.oauth-box.waiting { opacity: 0.82; }
+.oauth-copy { display: flex; align-items: flex-start; gap: 9px; color: var(--accent-strong); }
+.oauth-copy > svg { flex: 0 0 auto; margin-top: 1px; }
+.oauth-copy > div { display: grid; gap: 3px; }
+.oauth-copy strong { font-size: 11px; }
+.oauth-copy span { color: var(--muted); font-size: 10px; line-height: 1.45; }
+.oauth-button { width: 100%; }
 
 .workbench { height: calc(100dvh - 58px); display: grid; grid-template-columns: 248px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 35px; }
 .workbench.with-logs { grid-template-rows: minmax(0, 1fr) 188px; }

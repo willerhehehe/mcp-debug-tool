@@ -38,7 +38,9 @@ Options:
 
 const options = parseCli(process.argv.slice(2));
 const app = express();
-const connection = new McpConnection();
+const oauthCallbackUrl = `http://127.0.0.1:${options.port}/oauth/callback`;
+const uiUrl = options.dev ? "http://127.0.0.1:5173" : `http://127.0.0.1:${options.port}`;
+const connection = new McpConnection(oauthCallbackUrl);
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "4mb" }));
@@ -53,6 +55,17 @@ app.get("/api/logs", (request, response) => {
 app.delete("/api/logs", (_request, response) => {
   connection.clearLogs();
   response.status(204).end();
+});
+
+app.get("/oauth/callback", async (request, response) => {
+  try {
+    const callback = new URL(request.originalUrl, oauthCallbackUrl);
+    const result = await connection.completeOAuth(callback.searchParams);
+    if (!result.status.connected) throw new Error("The MCP server still requires authorization");
+    response.status(200).type("html").send(oauthCallbackPage(true, uiUrl));
+  } catch {
+    response.status(400).type("html").send(oauthCallbackPage(false, uiUrl));
+  }
 });
 
 app.post("/api/connect", async (request, response, next) => {
@@ -127,3 +140,36 @@ async function shutdown() {
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+function oauthCallbackPage(success: boolean, returnUrl: string) {
+  const title = success ? "Authorization complete" : "Authorization failed";
+  const message = success
+    ? "The MCP server is connected. You can close this tab and return to MCP Debug Tool."
+    : "The authorization response could not be verified. Return to MCP Debug Tool and start a new connection.";
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'" />
+    <title>${title}</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #f4f5f1; color: #1a1d18; }
+      main { width: min(420px, calc(100% - 40px)); padding: 28px; border: 1px solid #d9ddd4; border-radius: 12px; background: #fbfcf8; box-shadow: 0 14px 40px rgba(38,49,34,.09); }
+      .mark { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: white; background: ${success ? "#185f36" : "#a63a36"}; font-weight: 700; }
+      h1 { margin: 20px 0 8px; font-size: 22px; }
+      p { margin: 0; color: #667064; line-height: 1.55; }
+      a { display: inline-block; margin-top: 22px; color: #185f36; font-weight: 650; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark">${success ? "✓" : "!"}</div>
+      <h1>${title}</h1>
+      <p>${message}</p>
+      <a href="${returnUrl}">Return to MCP Debug Tool</a>
+    </main>
+  </body>
+</html>`;
+}

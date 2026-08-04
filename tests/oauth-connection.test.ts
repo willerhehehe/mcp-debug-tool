@@ -5,6 +5,7 @@ describe("McpConnection OAuth", () => {
   it("discovers OAuth, completes PKCE, and reconnects with the access token", async () => {
     const baseUrl = "https://auth.example";
     let tokenRequest = "";
+    let delayInitialChallenge = true;
     const fetchMock: typeof fetch = async (input, init) => {
       const request = new Request(input, init);
       const url = new URL(request.url);
@@ -38,6 +39,10 @@ describe("McpConnection OAuth", () => {
       }
       if (url.pathname === "/mcp" && request.method === "POST") {
         if (request.headers.get("authorization") !== "Bearer oauth-access-token") {
+          if (delayInitialChallenge) {
+            delayInitialChallenge = false;
+            await new Promise((resolve) => setTimeout(resolve, 2_100));
+          }
           return json(401, { error: "unauthorized" }, {
             "www-authenticate": `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource/mcp", scope="mcp"`,
           });

@@ -62,6 +62,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .brand, .top-actions, .connection-chip, .button, .segmented, .feature-line, .breadcrumb, .group-title, .output-tabs button, .preview-notice, .preview-footnote, .log-heading { display: flex; align-items: center; }
 .brand { gap: 10px; font-size: 14px; font-weight: 680; letter-spacing: -0.02em; }
 .brand-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; color: #eefaf1; background: var(--accent-strong); }
+.version-badge { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); background: var(--surface-2); font-size: 9px; font-weight: 600; letter-spacing: 0; }
 .top-actions { gap: 9px; }
 .connection-chip { height: 32px; gap: 8px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; }
 .connection-chip code { color: var(--muted); font-size: 10px; }
@@ -219,7 +220,7 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 
 @media (max-width: 560px) {
   .topbar { padding: 0 10px; }
-  .brand > span, .connection-chip code, .button.subtle span { display: none; }
+  .brand > span, .version-badge, .connection-chip code, .button.subtle span { display: none; }
   .connection-chip { max-width: 160px; }
   .connect-copy { display: none; }
   .connect-page { align-items: start; padding-top: 24px; }

@@ -19,6 +19,7 @@ import {
   Wrench,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { version as appVersion } from "../../package.json";
 import { api } from "./api";
 import { AppPreview } from "./components/AppPreview";
 import { JsonView } from "./components/JsonView";
@@ -193,6 +194,7 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark"><CirclesThreePlus size={19} weight="fill" /></div>
           <span>MCP Debug Tool</span>
+          <code className="version-badge">v{appVersion}</code>
         </div>
         <div className="top-actions">
           {status.connected && (

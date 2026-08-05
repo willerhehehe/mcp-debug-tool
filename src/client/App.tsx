@@ -18,7 +18,16 @@ import {
   Trash,
   Wrench,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { version as appVersion } from "../../package.json";
 import { api } from "./api";
 import { AppPreview } from "./components/AppPreview";
@@ -33,6 +42,9 @@ type Selection = { kind: Kind; item: Record<string, unknown> };
 type OutputTab = "response" | "app" | "definition";
 
 const emptyCatalog: Catalog = { tools: [], resources: [], resourceTemplates: [], prompts: [], errors: {} };
+const DEFAULT_LOG_HEIGHT = 188;
+const EXPANDED_LOG_HEIGHT = 360;
+const MIN_LOG_HEIGHT = 96;
 
 export default function App() {
   const [status, setStatus] = useState<ConnectionStatus>({ connected: false });
@@ -48,6 +60,9 @@ export default function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logsOpen, setLogsOpen] = useState(true);
   const [expandedLogId, setExpandedLogId] = useState<number>();
+  const [logHeight, setLogHeight] = useState(DEFAULT_LOG_HEIGHT);
+  const workbenchRef = useRef<HTMLElement>(null);
+  const resizeCleanupRef = useRef<(() => void) | undefined>(undefined);
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
   );
@@ -55,6 +70,56 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  const maxLogHeight = useCallback(() => {
+    const workbenchHeight = workbenchRef.current?.getBoundingClientRect().height ?? window.innerHeight - 58;
+    return Math.max(MIN_LOG_HEIGHT, Math.min(window.innerHeight - 96, workbenchHeight - 96));
+  }, []);
+
+  const clampLogHeight = useCallback((height: number) =>
+    Math.round(Math.min(Math.max(height, MIN_LOG_HEIGHT), maxLogHeight())), [maxLogHeight]);
+
+  const resizeLogBy = useCallback((delta: number) => {
+    setLogHeight((height) => clampLogHeight(height + delta));
+  }, [clampLogHeight]);
+
+  const resetLogHeight = useCallback(() => {
+    setLogHeight(clampLogHeight(expandedLogId === undefined ? DEFAULT_LOG_HEIGHT : EXPANDED_LOG_HEIGHT));
+  }, [clampLogHeight, expandedLogId]);
+
+  const startLogResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizeCleanupRef.current?.();
+    const startY = event.clientY;
+    const startHeight = logHeight;
+    document.body.classList.add("resizing-log-panel");
+
+    const onMove = (moveEvent: PointerEvent) => {
+      setLogHeight(clampLogHeight(startHeight + startY - moveEvent.clientY));
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", cleanup);
+      window.removeEventListener("pointercancel", cleanup);
+      document.body.classList.remove("resizing-log-panel");
+      if (resizeCleanupRef.current === cleanup) resizeCleanupRef.current = undefined;
+    };
+
+    resizeCleanupRef.current = cleanup;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", cleanup);
+    window.addEventListener("pointercancel", cleanup);
+  }, [clampLogHeight, logHeight]);
+
+  useEffect(() => {
+    const onResize = () => setLogHeight((height) => clampLogHeight(height));
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      resizeCleanupRef.current?.();
+    };
+  }, [clampLogHeight]);
 
   useEffect(() => {
     void api.status().then(async (current) => {
@@ -214,7 +279,11 @@ export default function App() {
       {!status.connected ? (
         <ConnectScreen onConnect={connect} busy={busy} error={error} status={status} />
       ) : (
-        <main className={`workbench ${logsOpen ? (expandedLogId !== undefined ? "with-log-detail" : "with-logs") : ""}`}>
+        <main
+          ref={workbenchRef}
+          className={`workbench ${logsOpen ? (expandedLogId !== undefined ? "with-log-detail" : "with-logs") : ""}`}
+          style={{ "--log-panel-height": `${logHeight}px` } as CSSProperties}
+        >
           <aside className="sidebar">
             <div className="sidebar-head">
               <div>
@@ -280,8 +349,17 @@ export default function App() {
             logs={logs}
             open={logsOpen}
             expandedLogId={expandedLogId}
+            height={logHeight}
+            maxHeight={maxLogHeight()}
             onToggle={() => setLogsOpen(!logsOpen)}
-            onExpand={(id) => setExpandedLogId(expandedLogId === id ? undefined : id)}
+            onExpand={(id) => {
+              const nextId = expandedLogId === id ? undefined : id;
+              setExpandedLogId(nextId);
+              if (nextId !== undefined) setLogHeight((height) => clampLogHeight(Math.max(height, EXPANDED_LOG_HEIGHT)));
+            }}
+            onResizeStart={startLogResize}
+            onResizeBy={resizeLogBy}
+            onResizeReset={resetLogHeight}
             onClear={async () => { await api.clearLogs(); setLogs([]); setExpandedLogId(undefined); }}
           />
         </main>
@@ -402,16 +480,44 @@ function CapabilityGroup({ title, icon, items, kind, selection, onSelect, error 
   );
 }
 
-function LogPanel({ logs, open, expandedLogId, onToggle, onExpand, onClear }: {
+function LogPanel({ logs, open, expandedLogId, height, maxHeight, onToggle, onExpand, onResizeStart, onResizeBy, onResizeReset, onClear }: {
   logs: LogEntry[];
   open: boolean;
   expandedLogId?: number;
+  height: number;
+  maxHeight: number;
   onToggle: () => void;
   onExpand: (id: number) => void;
+  onResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onResizeBy: (delta: number) => void;
+  onResizeReset: () => void;
   onClear: () => void;
 }) {
+  const resizeWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 64 : 24;
+    if (event.key === "ArrowUp") onResizeBy(step);
+    else if (event.key === "ArrowDown") onResizeBy(-step);
+    else if (event.key === "Home") onResizeReset();
+    else return;
+    event.preventDefault();
+  };
+
   return (
     <section className={`log-panel ${open ? "open" : ""} ${expandedLogId !== undefined ? "with-detail" : ""}`}>
+      {open && <div
+        className="log-resize-handle"
+        role="separator"
+        aria-label="Resize protocol log"
+        aria-orientation="horizontal"
+        aria-valuemin={MIN_LOG_HEIGHT}
+        aria-valuemax={Math.round(maxHeight)}
+        aria-valuenow={Math.round(height)}
+        tabIndex={0}
+        title="Drag to resize · Double-click to reset"
+        onPointerDown={onResizeStart}
+        onDoubleClick={onResizeReset}
+        onKeyDown={resizeWithKeyboard}
+      />}
       <button className="log-heading" onClick={onToggle}><TerminalWindow size={15} /><span>Protocol log</span><code>{logs.length}</code>{open ? <CaretDown size={13} /> : <CaretRight size={13} />}</button>
       {open && <>
         <button className="icon-button log-clear" onClick={onClear} aria-label="Clear logs"><Trash size={14} /></button>

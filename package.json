@@ -1,6 +1,6 @@
 {
   "name": "mcp-debug-tool",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "A local UI workbench for inspecting MCP servers and MCP Apps.",
   "repository": {
     "type": "git",

@@ -169,10 +169,11 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .log-resize-handle::after { content: ""; position: absolute; top: 4px; left: 50%; width: 42px; height: 2px; border-radius: 999px; background: var(--line-strong); opacity: 0; transform: translateX(-50%); transition: opacity 120ms ease; }
 .log-panel:hover .log-resize-handle::after, .log-resize-handle:focus-visible::after, .resizing-log-panel .log-resize-handle::after { opacity: 1; }
 .resizing-log-panel { cursor: ns-resize; user-select: none; }
-.log-heading { width: 100%; height: 34px; gap: 7px; padding: 0 12px; border: 0; background: transparent; cursor: pointer; text-align: left; font-size: 11px; font-weight: 650; }
+.log-heading { width: 100%; height: 34px; gap: 7px; padding: 0 4px 0 12px; background: transparent; text-align: left; font-size: 11px; font-weight: 650; }
 .log-heading span { flex: 0 0 auto; }
 .log-heading code { color: var(--faint); font-size: 9px; }
-.log-heading svg:last-child { margin-left: auto; }
+.log-toggle { width: 28px; height: 28px; display: grid; place-items: center; margin-left: auto; border: 0; border-radius: 6px; background: transparent; cursor: pointer; }
+.log-toggle:hover { background: var(--surface-2); }
 .log-clear { position: absolute; top: 2px; right: 35px; height: 28px; width: 28px; }
 .log-list { height: calc(100% - 35px); overflow: auto; border-top: 1px solid var(--line); font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; }
 .log-entry { min-width: 760px; border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent); }

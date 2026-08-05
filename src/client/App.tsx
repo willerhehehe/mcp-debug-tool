@@ -90,9 +90,13 @@ export default function App() {
   const startLogResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
+    event.stopPropagation();
     resizeCleanupRef.current?.();
+    const handle = event.currentTarget;
+    const pointerId = event.pointerId;
     const startY = event.clientY;
     const startHeight = logHeight;
+    handle.setPointerCapture(pointerId);
     document.body.classList.add("resizing-log-panel");
 
     const onMove = (moveEvent: PointerEvent) => {
@@ -102,6 +106,7 @@ export default function App() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", cleanup);
       window.removeEventListener("pointercancel", cleanup);
+      if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
       document.body.classList.remove("resizing-log-panel");
       if (resizeCleanupRef.current === cleanup) resizeCleanupRef.current = undefined;
     };
@@ -513,12 +518,19 @@ function LogPanel({ logs, open, expandedLogId, height, maxHeight, onToggle, onEx
         aria-valuemax={Math.round(maxHeight)}
         aria-valuenow={Math.round(height)}
         tabIndex={0}
-        title="Drag to resize · Double-click to reset"
+        title="Drag to resize"
         onPointerDown={onResizeStart}
-        onDoubleClick={onResizeReset}
+        onClick={(event) => event.stopPropagation()}
         onKeyDown={resizeWithKeyboard}
       />}
-      <button className="log-heading" onClick={onToggle}><TerminalWindow size={15} /><span>Protocol log</span><code>{logs.length}</code>{open ? <CaretDown size={13} /> : <CaretRight size={13} />}</button>
+      <div className="log-heading">
+        <TerminalWindow size={15} />
+        <span>Protocol log</span>
+        <code>{logs.length}</code>
+        <button className="log-toggle" onClick={onToggle} aria-label={open ? "Collapse protocol log" : "Expand protocol log"}>
+          {open ? <CaretDown size={13} /> : <CaretRight size={13} />}
+        </button>
+      </div>
       {open && <>
         <button className="icon-button log-clear" onClick={onClear} aria-label="Clear logs"><Trash size={14} /></button>
         <div className="log-list">
